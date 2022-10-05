@@ -29,18 +29,28 @@
  */
 
 `timescale 1ns / 1ps
-`include "../rtl/config.vh"
+`include "rtl/config.vh"
+`include "darkriscv.v"
 
 module darksocv
 (
     input        XCLK,      // external clock
     input        XRES,      // external reset
+
     
     input        UART_RXD,  // UART receive line
+
+    // interface being controlled from our corp
+    input [31:0] IDATA_IN,
+
     output       UART_TXD,  // UART transmit line
 
     output [3:0] LED,       // on-board leds
-    output [3:0] DEBUG      // osciloscope
+    output [3:0] DEBUG,     // osciloscope
+
+    // interface for looking at PC
+   output [31:0] pc_out,
+   output [1023:0] regfile_out
 );
 
     // internal/external reset logic
@@ -245,9 +255,9 @@ module darksocv
         // workaround for vivado: no path in simulation and .mem extension
         
 `ifdef XILINX_SIMULATOR
-        $readmemh("darksocv.mem",MEM);
+        //$readmemh("darksocv.mem",MEM);
 `else
-        $readmemh("../src/darksocv.mem",MEM);
+        //$ureadmemh("darksocv.mem",MEM);
 `endif        
     end
 
@@ -257,7 +267,9 @@ module darksocv
 
     wire [31:0] IADDR;
     wire [31:0] DADDR;
-    wire [31:0] IDATA;    
+
+    wire [31:0] IDATA;
+
     wire [31:0] DATAO;        
     wire [31:0] DATAI;
     wire        WR,RD;
@@ -318,7 +330,7 @@ module darksocv
         end
     end
 
-    assign IDATA = ICACHED;
+    // assign IDATA = ICACHED;
 
 `else
 
@@ -355,11 +367,8 @@ module darksocv
         
         HLT2 <= HLT;
     end
-    
-    assign IDATA = HLT2 ? ROMFF2 : ROMFF;
-`else    
-    assign IDATA = ROMFF;
 `endif
+    assign IDATA = IDATA_IN;
 
     always@(posedge CLK) // stage #0.5    
     begin
@@ -706,6 +715,7 @@ module darksocv
     wire [3:0] UDEBUG;
 
     wire FINISH_REQ;
+    /*
 
     darkuart
 //    #( 
@@ -728,6 +738,7 @@ module darksocv
 `endif            
       .DEBUG(UDEBUG)
     );
+    */
 
     // darkriscv
 
@@ -776,7 +787,9 @@ module darksocv
 
         .IDLE(IDLE),
 
-        .DEBUG(KDEBUG)
+        .DEBUG(KDEBUG),
+        .PC_OUT(pc_out),
+        .regfile_out(regfile_out)
     );
 
     assign LED   = LEDFF[3:0];

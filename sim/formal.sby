@@ -1,0 +1,19 @@
+[tasks]
+bmc
+
+[options]
+bmc: mode bmc 
+
+[engines]
+smtbmc
+
+[script]
+read -formal -sv formal.v
+prep -top formal
+
+[files]
+formal.v
+utils/packer.v utils/packer.v
+../rtl/darksocv.v
+../rtl/darkriscv.v
+rtl/config.vh ../rtl/config.vh

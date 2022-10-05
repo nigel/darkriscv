@@ -38,6 +38,7 @@
 # - board/Makefile
 #
 # After configure each Makefile, you can just type 'make'
+#
 
 default: all
 

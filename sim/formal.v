@@ -30,60 +30,28 @@
 
 `timescale 1ns / 1ps
 `include "rtl/config.vh"
+`include "darksocv.v"
+`include "utils/packer.v"
 
-// clock and reset logic
+module formal (
+    input logic clk
+);
 
-module darksimv;
+    // clock counter
+    reg [31:0] counter = 32'b0;
 
-    reg CLK = 0;
-    
-    wire READ;
-    reg RES = 1;
-    reg read_from_rom = 1;
-    assign READ = read_from_rom;
+    // core signals
+    wire RES;
+    assign RES = counter <= 5;
 
-    initial while(1) #(500e6/`BOARD_CK) CLK = !CLK; // clock generator w/ freq defined by config.vh
-
-    integer i;
-
-    initial
-    begin
-`ifdef __ICARUS__
-        $dumpfile("darksocv.vcd");
-        $dumpvars();
-
-    `ifdef __REGDUMP__
-        for(i=0;i!=`RLEN;i=i+1)
-        begin
-            $dumpvars(0,soc0.core0.REGS[i]);
-        end
-    `endif
-`endif
-        $display("reset (startup)");
-        #1e3    RES = 0;            // wait 1us in reset state
-        $display("reset (restart)");
-
-        read_from_rom = 1;
-        #2e3; // setup code, want to read from ROM
-        $display("finsihed reading from ROM");
-        read_from_rom = 0;
-        #99e3; // feed in our custom IDATA!
-        $display("turning read_from_rom: %d", read_from_rom);
-        $display("turning READ: %d", READ);
-        $finish();
-        //#1000e3 $finish();          // run  1ms
-    end
-
-    wire TX;
-    wire RX = 1;
-    wire [31 : 0] pc;
-
-
-    reg [31:0] IDATA_reg;
     wire [31:0] IDATA;
 
-    // intiialize the first instruction to be nothing
-    initial IDATA_reg <= 32'b0;
+    wire [1023 : 0] regfile;
+    wire [31 : 0] pc;
+
+    // uart signals
+    wire TX;
+    wire RX = 1;
 
     // add (R) instruction
     reg [6:0] opcode = 7'b0110011;
@@ -94,31 +62,37 @@ module darksimv;
     (* anyseq *) reg [4:0] rs1;
     (* anyseq *) reg [4:0] rs2;
 
-    assign IDATA = {funct7, rs2, rs1, funct3, rd, opcode};
+    // random adds begin coming in when the counter >= 10
+    assign IDATA = (counter >= 10) ? {funct7, rs2, rs1, funct3, rd, opcode} : 32'h00000013;
+
+    // registers
+    reg [31:0] regs [0:31];
+    `UNPACK_ARRAY(32, 32, regs, regfile);
 
     darksocv soc0
     (
-        .XCLK(CLK),
+        .XCLK(clk),
         .XRES(|RES),
         .UART_RXD(RX),
         .UART_TXD(TX),
         .IDATA_IN(IDATA), // controlled by corp 
-        .READ(read_from_rom), // tells the SOC to read from ROM when need to
+
+        // TODO regfile_in
+        // TODO regfile_wren
 
         // output of the RISCV core
         .pc_out(pc),
+        .regfile_out(regfile)
     );
 
 
-    // for formal analysis
-    always @(*) begin
-        assert(soc0.core0.REGS[0] == soc0.core0.REGS[0]);
+    always @(posedge clk) begin
+        counter <= counter + 1;
+        if (counter == 6) begin
+            // set the regs
+        end else if (counter >= 10) begin
+            // TODO assertion goes here once the adds begin coming
+        end
     end
-
-
-    // TODO we now formally verify the ADD (R) instruction
-    //always @(*) begin
-        // TODO formal verification goes here
-    //end
 
 endmodule

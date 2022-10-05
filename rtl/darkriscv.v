@@ -52,7 +52,8 @@
 
 // configuration file
 
-`include "../rtl/config.vh"
+`include "rtl/config.vh"
+`include "utils/packer.v"
 
 module darkriscv
 //#(
@@ -90,7 +91,9 @@ module darkriscv
 
     output            IDLE,   // idle output
     
-    output [3:0]  DEBUG       // old-school osciloscope based debug! :)
+    output [3:0]  DEBUG,      // old-school osciloscope based debug! :)
+    output [31:0] PC_OUT,
+    output [1023:0] regfile_out
 );
 
     // dummy 32-bit words w/ all-0s and all-1s: 
@@ -239,6 +242,12 @@ module darkriscv
 
     reg [31:0] NXPC;        // 32-bit program counter t+1
     reg [31:0] PC;		    // 32-bit program counter t+0
+
+    /* DEBUG ASSIGNMENTS */
+    assign PC_OUT = PC;
+    assign DREG_OUT = REGS[DPTR];
+
+    `PACK_ARRAY(32, 32, REGS, regfile_out);
 
     // source-1 and source-1 register selection
 
@@ -470,8 +479,8 @@ module darkriscv
 
         if(EBRK)
         begin
-            $display("breakpoint at %x",PC);
-            $stop();
+            //$display("breakpoint at %x",PC);
+            //$stop();
         end
     end
 
