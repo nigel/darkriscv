@@ -245,7 +245,42 @@ module darkriscv
 
     /* DEBUG ASSIGNMENTS */
     assign PC_OUT = PC;
+    wire [31:0] DREG_OUT;
     assign DREG_OUT = REGS[DPTR];
+
+    wire [31:0] reg0;
+    wire [31:0] reg1;
+    wire [31:0] reg2;
+    wire [31:0] reg3;
+    wire [31:0] reg4;
+    wire [31:0] reg5;
+    wire [31:0] reg6;
+    wire [31:0] reg7;
+    wire [31:0] reg8;
+    wire [31:0] reg9;
+    wire [31:0] reg10;
+    wire [31:0] reg11;
+    wire [31:0] reg12;
+    wire [31:0] reg13;
+    wire [31:0] reg14;
+    wire [31:0] reg15;
+
+    assign reg0 = REGS[0];
+    assign reg1 = REGS[1];
+    assign reg2 = REGS[2];
+    assign reg3 = REGS[3];
+    assign reg4 = REGS[4];
+    assign reg5 = REGS[5];
+    assign reg6 = REGS[6];
+    assign reg7 = REGS[7];
+    assign reg8 = REGS[8];
+    assign reg9 = REGS[9];
+    assign reg10 = REGS[10];
+    assign reg11 = REGS[11];
+    assign reg12 = REGS[12];
+    assign reg13 = REGS[13];
+    assign reg14 = REGS[14];
+    assign reg15 = REGS[15];
 
     `PACK_ARRAY(32, 16, REGS, regfile_out);
 
@@ -257,16 +292,15 @@ module darkriscv
     wire signed   [31:0] S1REG = U1REG;
     wire signed   [31:0] S2REG = U2REG;
 
-
     /* Register initialization */
     // set all register initial value to 0 
     integer i;
     initial begin
-        for (i = 0; i < `RLEN; i += 1) begin
-            REGS[i] <= `__RESETSP__;
+        for (i = 1; i < `RLEN; i += 1) begin
+            //REGS[i] <= `__RESETSP__;
+            REGS[i] <= i;
         end
     end
-    
 
     // L-group of instructions (OPCODE==7'b0000011)
 

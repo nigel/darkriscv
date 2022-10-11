@@ -59,7 +59,7 @@ module formal;
 
 
     // clock counter
-    reg [31:0] counter = 32'b0;
+    reg [5096:0] counter = 5097'b0;
 
     // core signals
     //assign RES = counter <= 5;
@@ -77,25 +77,37 @@ module formal;
     wire RX = 1;
 
     // add (R) instruction
-    /*
     reg [6:0] opcode = 7'b0110011;
     reg [2:0] funct3 = 3'b0;
     reg [6:0] funct7 = 7'b0;
-    */
 
     // add (I) instruction
+    /*
     reg [6:0] opcode = 7'b0010011;
     reg [2:0] funct3 = 3'b0;
     reg [6:0] funct7 = 7'b0;
+    */
 
     reg [4:0] rd;
     reg [4:0] rs1;
     reg [4:0] rs2;
 
+    reg [4:0] rs1_history [2:0];
+    reg [4:0] rs2_history [2:0];
+    reg [4:0] rd_history [2:0];
+
+    integer i;
     initial begin
-        rd <= $random;
-        rs1 <= $random;
-        rs2 <= $random;
+        $display("RLEN: %d", `RLEN);
+        rd <= $urandom % `RLEN;
+        rs1 <= $urandom % `RLEN;
+        rs2 <= $urandom % `RLEN;
+
+        for (i = 0; i < 3; i += 1) begin
+            rs1_history[i] = 5'b0;
+            rs2_history[i] = 5'b0;
+            rd_history[i] = 5'b0;
+        end
     end
 
     // random adds begin coming in when the counter >= 10
@@ -120,17 +132,30 @@ module formal;
 
 
     always @(posedge CLK) begin
-        counter <= counter + 1;
-        rd <= $random;
-        rs1 <= $random;
-        rs2 <= $random;
-        /*
-        if (counter == 6) begin
-            // set the regs
-        end else if (counter >= 10) begin
-            // TODO assertion goes here once the adds begin coming
+
+
+        if (RES == 0) begin
+            rd <= (counter % `RLEN);
+            rs1 <= (counter + 1) % `RLEN;
+            rs2 <= (counter + 2) % `RLEN;
+
+            if (counter >= 3) begin
+                rs2_history[counter % 2] <= regs[(counter + 2) % `RLEN];
+                rs1_history[counter % 2] <= regs[(counter + 1) % `RLEN];
+                rd_history[counter % 2] <= rd;
+            end
+
+            if ((counter >= 5) && (counter <= 20)) begin
+                //$display("counter: %d, rd: %d", counter, rd_history[counter % 2]);
+                if (rd_history[counter % 2] != 0) begin
+                    $display("%d + %d = %d, c=%d", rs1_history[counter % 2], 
+                        rs2_history[counter % 2],
+                        regs[rd_history[counter % 2]], counter[12:0]);
+                end
+            end
+
+            counter <= counter + 1;
         end
-        */
     end
 
 endmodule
