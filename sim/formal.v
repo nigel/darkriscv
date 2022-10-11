@@ -77,16 +77,16 @@ module formal;
     wire RX = 1;
 
     // add (R) instruction
+    /*
     reg [6:0] opcode = 7'b0110011;
     reg [2:0] funct3 = 3'b0;
     reg [6:0] funct7 = 7'b0;
+    */
 
     // add (I) instruction
-    /*
     reg [6:0] opcode = 7'b0010011;
     reg [2:0] funct3 = 3'b0;
     reg [6:0] funct7 = 7'b0;
-    */
 
     reg [4:0] rd;
     reg [4:0] rs1;
