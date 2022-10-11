@@ -51,9 +51,9 @@
 
 
 // configuration file
-
-`include "rtl/config.vh"
+`include "../rtl/config.vh"
 `include "utils/packer.v"
+
 
 module darkriscv
 //#(
@@ -93,7 +93,7 @@ module darkriscv
     
     output [3:0]  DEBUG,      // old-school osciloscope based debug! :)
     output [31:0] PC_OUT,
-    output [1023:0] regfile_out
+    output [`REG_TOTAL - 1:0] regfile_out
 );
 
     // dummy 32-bit words w/ all-0s and all-1s: 
@@ -247,7 +247,7 @@ module darkriscv
     assign PC_OUT = PC;
     assign DREG_OUT = REGS[DPTR];
 
-    `PACK_ARRAY(32, 32, REGS, regfile_out);
+    `PACK_ARRAY(32, 16, REGS, regfile_out);
 
     // source-1 and source-1 register selection
 

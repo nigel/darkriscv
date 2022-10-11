@@ -29,8 +29,7 @@
  */
 
 `timescale 1ns / 1ps
-`include "rtl/config.vh"
-`include "darkriscv.v"
+`include "../rtl/config.vh"
 
 module darksocv
 (
@@ -50,7 +49,7 @@ module darksocv
 
     // interface for looking at PC
    output [31:0] pc_out,
-   output [1023:0] regfile_out
+   output [`REG_TOTAL - 1:0] regfile_out
 );
 
     // internal/external reset logic

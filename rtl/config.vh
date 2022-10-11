@@ -397,7 +397,9 @@
 `else
     `ifdef __RV32E__
         `define RLEN 16
+        `define REG_TOTAL 32 * 16
     `else
         `define RLEN 32
+        `define REG_TOTAL 32 * 32
     `endif
 `endif

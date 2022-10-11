@@ -29,24 +29,47 @@
  */
 
 `timescale 1ns / 1ps
-`include "rtl/config.vh"
-`include "darksocv.v"
 `include "utils/packer.v"
+`include "../rtl/config.vh"
 
-module formal (
-    input logic clk
-);
+module formal;
+
+    reg CLK = 0;
+
+    reg RES = 1;
+    /* Setup code */
+    initial while(1) #(500e6/`BOARD_CK) CLK = !CLK;
+    initial begin
+ `ifdef __ICARUS__
+         $dumpfile("darksocv.vcd");
+         $dumpvars();
+ 
+     `ifdef __REGDUMP__
+         for(i=0;i!=`RLEN;i=i+1)
+         begin
+             $dumpvars(0,soc0.core0.REGS[i]);
+         end
+     `endif
+ `endif
+        $display("Hello World!");
+        #1e3    RES = 0;            // wait 1us in reset state
+        #100e3 RES = 1;            // run  1ms
+        $finish();
+    end
+
 
     // clock counter
     reg [31:0] counter = 32'b0;
 
     // core signals
-    wire RES;
-    assign RES = counter <= 5;
+    //assign RES = counter <= 5;
 
     wire [31:0] IDATA;
 
-    wire [1023 : 0] regfile;
+    wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
+    assign rout = regfile; 
+
+
     wire [31 : 0] pc;
 
     // uart signals
@@ -58,27 +81,37 @@ module formal (
     reg [2:0] funct3 = 3'b0;
     reg [6:0] funct7 = 7'b0;
 
-    (* anyseq *) reg [4:0] rd;
-    (* anyseq *) reg [4:0] rs1;
-    (* anyseq *) reg [4:0] rs2;
+    // add (I) instruction
+    /*
+    reg [6:0] opcode = 7'b0010011;
+    reg [2:0] funct3 = 3'b0;
+    reg [6:0] funct7 = 7'b0;
+    */
+
+    reg [4:0] rd;
+    reg [4:0] rs1;
+    reg [4:0] rs2;
+
+    initial begin
+        rd <= $random;
+        rs1 <= $random;
+        rs2 <= $random;
+    end
 
     // random adds begin coming in when the counter >= 10
-    assign IDATA = (counter >= 10) ? {funct7, rs2, rs1, funct3, rd, opcode} : 32'h00000013;
+    assign IDATA = (RES == 0) ? {funct7, rs2, rs1, funct3, rd, opcode} : 32'h00000013;
 
     // registers
-    reg [31:0] regs [0:31];
-    `UNPACK_ARRAY(32, 32, regs, regfile);
+    wire [31:0] regs [0:15] /*synthesis keep*/;
+    `UNPACK_ARRAY(32, 16, regs, regfile);
 
     darksocv soc0
     (
-        .XCLK(clk),
+        .XCLK(CLK),
         .XRES(|RES),
         .UART_RXD(RX),
         .UART_TXD(TX),
         .IDATA_IN(IDATA), // controlled by corp 
-
-        // TODO regfile_in
-        // TODO regfile_wren
 
         // output of the RISCV core
         .pc_out(pc),
@@ -86,13 +119,18 @@ module formal (
     );
 
 
-    always @(posedge clk) begin
+    always @(posedge CLK) begin
         counter <= counter + 1;
+        rd <= $random;
+        rs1 <= $random;
+        rs2 <= $random;
+        /*
         if (counter == 6) begin
             // set the regs
         end else if (counter >= 10) begin
             // TODO assertion goes here once the adds begin coming
         end
+        */
     end
 
 endmodule
