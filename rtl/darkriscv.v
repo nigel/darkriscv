@@ -256,6 +256,16 @@ module darkriscv
 
     wire signed   [31:0] S1REG = U1REG;
     wire signed   [31:0] S2REG = U2REG;
+
+
+    /* Register initialization */
+    // set all register initial value to 0 
+    integer i;
+    initial begin
+        for (i = 0; i < `RLEN; i += 1) begin
+            REGS[i] <= `__RESETSP__;
+        end
+    end
     
 
     // L-group of instructions (OPCODE==7'b0000011)
@@ -370,9 +380,8 @@ module darkriscv
 
     always@(posedge CLK)
     begin
-        RESMODE <= RES ? -1 : RESMODE ? RESMODE-1 : 0;
-        
-        XRES <= |RESMODE;
+        RESMODE <= RES ? 1 : RESMODE ? RESMODE-1 : 0;
+        XRES <= RES;
 
 `ifdef __3STAGE__
 	    FLUSH <= XRES ? 2 : HLT ? FLUSH :        // reset and halt                              
@@ -387,19 +396,19 @@ module darkriscv
 `endif
 `ifdef __INTERRUPT__
         if(XRES)
-        begin
-            MTVEC <= 0;
-            MEPC  <= 0;
-            MIP   <= 0;
-            MIE   <= 0;
-        end
+            begin
+                MTVEC <= 0;
+                MEPC  <= 0;
+                MIP   <= 0;
+                MIE   <= 0;
+            end
         else
-        if(MIP&&MIE&&JREQ)
-        begin
-            MEPC <= JVAL;
-            MIP  <= 1;
-            MIE  <= 0;
-        end
+            if(MIP&&MIE&&JREQ)
+            begin
+                MEPC <= JVAL;
+                MIP  <= 1;
+                MIE  <= 0;
+            end
         else
         if(CSRW)
         begin
@@ -441,7 +450,6 @@ module darkriscv
                        CSRR ? CDATA : 
 `endif
                              REGS[DPTR];
-
 `ifdef __3STAGE__
 
     `ifdef __THREADS__

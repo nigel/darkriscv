@@ -759,7 +759,7 @@ module darksocv
 `else
         .CLK(!CLK),
 `endif
-        .RES(RES),
+        .RES(XRES),
         .HLT(HLT),
 `ifdef __THREADS__        
         .TPTR(TPTR),
