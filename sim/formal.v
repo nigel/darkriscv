@@ -57,18 +57,10 @@ module formal;
         $finish();
     end
 
-
     // clock counter
-    reg [5096:0] counter = 5097'b0;
-
-    // core signals
-    //assign RES = counter <= 5;
-
+    reg [40:0] counter = 5097'b0;
     wire [31:0] IDATA;
-
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
-    assign rout = regfile; 
-
 
     wire [31 : 0] pc;
 
@@ -92,9 +84,9 @@ module formal;
     reg [4:0] rs1;
     reg [4:0] rs2;
 
-    reg [4:0] rs1_history [2:0];
-    reg [4:0] rs2_history [2:0];
-    reg [4:0] rd_history [2:0];
+    reg [31:0] rs1_history [1:0];
+    reg [31:0] rs2_history [1:0];
+    reg [4:0] rd_history [1:0];
 
     integer i;
     initial begin
@@ -104,8 +96,8 @@ module formal;
         rs2 <= $urandom % `RLEN;
 
         for (i = 0; i < 3; i += 1) begin
-            rs1_history[i] = 5'b0;
-            rs2_history[i] = 5'b0;
+            rs1_history[i] = 32'b0;
+            rs2_history[i] = 32'b0;
             rd_history[i] = 5'b0;
         end
     end
@@ -130,24 +122,24 @@ module formal;
         .regfile_out(regfile)
     );
 
-
+    /* test driver code */
     always @(posedge CLK) begin
-
-
         if (RES == 0) begin
             rd <= (counter % `RLEN);
             rs1 <= (counter + 1) % `RLEN;
             rs2 <= (counter + 2) % `RLEN;
 
+            // Instructions exhibit architectural effects after
+            // counter >= 3
             if (counter >= 3) begin
-                rs2_history[counter % 2] <= regs[(counter + 2) % `RLEN];
-                rs1_history[counter % 2] <= regs[(counter + 1) % `RLEN];
+                rs2_history[counter % 2] <= regs[rs2];
+                rs1_history[counter % 2] <= regs[rs1];
                 rd_history[counter % 2] <= rd;
             end
 
-            if ((counter >= 5) && (counter <= 20)) begin
-                //$display("counter: %d, rd: %d", counter, rd_history[counter % 2]);
+            if (counter >= 5) begin
                 if (rd_history[counter % 2] != 0) begin
+                    // TODO assertions go here
                     $display("%d + %d = %d, c=%d", rs1_history[counter % 2], 
                         rs2_history[counter % 2],
                         regs[rd_history[counter % 2]], counter[12:0]);
