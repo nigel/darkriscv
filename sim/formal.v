@@ -31,13 +31,14 @@
 `timescale 1ns / 1ps
 `include "utils/packer.v"
 `include "rtl/config.vh"
+`include "darksocv.v"
 
 module formal (
     input logic clk
 );
 
     /* Setup code */
-    initial while(1) #(500e6/`BOARD_CK) CLK = !CLK;
+    //initial while(1) #(500e6/`BOARD_CK) CLK = !CLK;
     initial begin
  `ifdef __ICARUS__
          $dumpfile("formal_darksocv.vcd");
@@ -53,11 +54,12 @@ module formal (
     end
 
     // clock counter
-    reg [40:0] counter = 5097'b0;
+    reg [40:0] counter = 5097'b1;
+    reg [40:0] g_counter = 5097'b0;
 
     // reset wire
     wire RES;
-    assign RES = counter <= 5;
+    assign RES = g_counter <= 5;
 
     wire [31:0] IDATA;
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
@@ -86,6 +88,7 @@ module formal (
 
     reg [31:0] rs1_history [1:0];
     reg [31:0] rs2_history [1:0];
+
     reg [4:0] rd_history [1:0];
 
     // random adds begin coming in when the counter >= 10
@@ -107,15 +110,25 @@ module formal (
         .pc_out(pc),
         .regfile_out(regfile)
     );
-
     /* test driver code */
     always @(posedge clk) begin
 
-        if (RES == 0) begin
-            assume(rd < `RLEN);
-            assume(rs1 < `RLEN);
-            assume(rs2 < `RLEN);
+        // assume register values are within length
+        assume(rd < `RLEN);
+        assume(rs1 < `RLEN);
+        assume(rs2 < `RLEN);
 
+        // ensure no hazards
+        assume(rs2 != rd_history[0]);
+        assume(rs2 != rd_history[1]);
+
+        assume(rs1 != rd_history[0]);
+        assume(rs1 != rd_history[1]);
+
+        // we can't assign to 0 reg
+        assume(rd != 0);
+
+        if (RES == 0) begin
             // Instructions exhibit architectural effects after
             // counter >= 3
             if (counter >= 3) begin
@@ -127,14 +140,20 @@ module formal (
             if (counter >= 5) begin
                 if (rd_history[counter % 2] != 0) begin
                     // TODO assertions go here
+                    assert(rs1_history[counter % 2] +
+                        rs2_history[counter % 2] == regs[rd_history[counter%2]]);
+                    /*
                     $display("%d + %d = %d, c=%d", rs1_history[counter % 2], 
                         rs2_history[counter % 2],
                         regs[rd_history[counter % 2]], counter[12:0]);
+                    */
                 end
             end
 
             counter <= counter + 1;
         end
+
+        g_counter <= g_counter + 1;
     end
 
 endmodule
