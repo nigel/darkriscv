@@ -30,18 +30,17 @@
 
 `timescale 1ns / 1ps
 `include "utils/packer.v"
-`include "../rtl/config.vh"
+`include "rtl/config.vh"
 
-module formal;
+module formal (
+    input logic clk
+);
 
-    reg CLK = 0;
-
-    reg RES = 1;
     /* Setup code */
     initial while(1) #(500e6/`BOARD_CK) CLK = !CLK;
     initial begin
  `ifdef __ICARUS__
-         $dumpfile("darksocv.vcd");
+         $dumpfile("formal_darksocv.vcd");
          $dumpvars();
  
      `ifdef __REGDUMP__
@@ -51,14 +50,15 @@ module formal;
          end
      `endif
  `endif
-        $display("Hello World!");
-        #1e3    RES = 0;            // wait 1us in reset state
-        #100e3 RES = 1;            // run  1ms
-        $finish();
     end
 
     // clock counter
     reg [40:0] counter = 5097'b0;
+
+    // reset wire
+    wire RES;
+    assign RES = counter <= 5;
+
     wire [31:0] IDATA;
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
 
@@ -80,27 +80,13 @@ module formal;
     reg [6:0] funct7 = 7'b0;
     */
 
-    reg [4:0] rd;
-    reg [4:0] rs1;
-    reg [4:0] rs2;
+    (* anyseq *) reg [4:0] rd;
+    (* anyseq *) reg [4:0] rs1;
+    (* anyseq *) reg [4:0] rs2;
 
     reg [31:0] rs1_history [1:0];
     reg [31:0] rs2_history [1:0];
     reg [4:0] rd_history [1:0];
-
-    integer i;
-    initial begin
-        $display("RLEN: %d", `RLEN);
-        rd <= $urandom % `RLEN;
-        rs1 <= $urandom % `RLEN;
-        rs2 <= $urandom % `RLEN;
-
-        for (i = 0; i < 3; i += 1) begin
-            rs1_history[i] = 32'b0;
-            rs2_history[i] = 32'b0;
-            rd_history[i] = 5'b0;
-        end
-    end
 
     // random adds begin coming in when the counter >= 10
     assign IDATA = (RES == 0) ? {funct7, rs2, rs1, funct3, rd, opcode} : 32'h00000013;
@@ -111,7 +97,7 @@ module formal;
 
     darksocv soc0
     (
-        .XCLK(CLK),
+        .XCLK(clk),
         .XRES(|RES),
         .UART_RXD(RX),
         .UART_TXD(TX),
@@ -123,11 +109,12 @@ module formal;
     );
 
     /* test driver code */
-    always @(posedge CLK) begin
+    always @(posedge clk) begin
+
         if (RES == 0) begin
-            rd <= (counter % `RLEN);
-            rs1 <= (counter + 1) % `RLEN;
-            rs2 <= (counter + 2) % `RLEN;
+            assume(rd < `RLEN);
+            assume(rs1 < `RLEN);
+            assume(rs2 < `RLEN);
 
             // Instructions exhibit architectural effects after
             // counter >= 3

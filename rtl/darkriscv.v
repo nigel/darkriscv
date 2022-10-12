@@ -49,11 +49,9 @@
 // not implemented opcodes:
 //`define FCC     7'b00011_11      // fencex
 
-
 // configuration file
-`include "../rtl/config.vh"
+`include "rtl/config.vh"
 `include "utils/packer.v"
-
 
 module darkriscv
 //#(

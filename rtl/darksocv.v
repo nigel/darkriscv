@@ -29,7 +29,8 @@
  */
 
 `timescale 1ns / 1ps
-`include "../rtl/config.vh"
+`include "rtl/config.vh"
+`include "darkriscv.v"
 
 module darksocv
 (
