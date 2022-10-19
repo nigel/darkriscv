@@ -3,6 +3,7 @@ bmc
 
 [options]
 bmc: mode bmc 
+depth 10
 
 [engines]
 smtbmc

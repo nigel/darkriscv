@@ -59,7 +59,7 @@ module formal (
 
     // reset wire
     wire RES;
-    assign RES = g_counter <= 5;
+    assign RES = g_counter <= 1;
 
     wire [31:0] IDATA;
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
@@ -139,14 +139,8 @@ module formal (
 
             if (counter >= 5) begin
                 if (rd_history[counter % 2] != 0) begin
-                    // TODO assertions go here
                     assert(rs1_history[counter % 2] +
                         rs2_history[counter % 2] == regs[rd_history[counter%2]]);
-                    /*
-                    $display("%d + %d = %d, c=%d", rs1_history[counter % 2], 
-                        rs2_history[counter % 2],
-                        regs[rd_history[counter % 2]], counter[12:0]);
-                    */
                 end
             end
 
