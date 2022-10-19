@@ -52,7 +52,7 @@ module formal;
      `endif
  `endif
         $display("Hello World!");
-        #1e3    RES = 0;            // wait 1us in reset state
+        #1     RES = 0;            // wait 1us in reset state
         #100e3 RES = 1;            // run  1ms
         $finish();
     end
