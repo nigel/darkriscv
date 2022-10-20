@@ -32,6 +32,10 @@
 `include "utils/packer.v"
 `include "../rtl/config.vh"
 
+`define R_TYPE 0
+`define I_TYPE 1
+`define S_TYPE 2
+
 module formal;
 
     reg CLK = 0;
@@ -53,7 +57,7 @@ module formal;
  `endif
         $display("Hello World!");
         #1     RES = 0;            // wait 1us in reset state
-        #100e3 RES = 1;            // run  1ms
+        #10e3 RES = 1;            // run  1ms
         $finish();
     end
 
@@ -62,52 +66,105 @@ module formal;
     wire [31:0] IDATA;
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
 
+
     wire [31 : 0] pc;
 
     // uart signals
     wire TX;
     wire RX = 1;
 
-    // add (R) instruction
-    reg [6:0] opcode = 7'b0110011;
-    reg [2:0] funct3 = 3'b0;
-    reg [6:0] funct7 = 7'b0;
+    reg [6:0] OPCODES [2:0];
 
-    // add (I) instruction
-    /*
-    reg [6:0] opcode = 7'b0010011;
-    reg [2:0] funct3 = 3'b0;
-    reg [6:0] funct7 = 7'b0;
-    */
 
+    /* Determines the type of instruction we're currently testing */
+    reg [1:0] op_mode = `R_TYPE;
+
+    // (R-Type) instruction
+    // TODO implement support for Funct7
+    wire [6:0] opcode = OPCODES[op_mode];
+    reg [2:0] funct3 = 3'b001;
+    reg [6:0] funct7 = 7'b0000000;
+    reg [11:0] imm = 12'b0;
     reg [4:0] rd;
     reg [4:0] rs1;
     reg [4:0] rs2;
 
+    /* History buffers */
     reg [31:0] rs1_history [1:0];
     reg [31:0] rs2_history [1:0];
     reg [4:0] rd_history [1:0];
+    reg [2:0] f3_history [1:0];
+    reg [6:0] f7_history [1:0];
+    reg [6:0] op_history [1:0];
+    reg [11:0] imm_history [1:0];
 
+    wire counter_cur = counter % 2;
+
+    /* Values of the current cycle */
+    wire [31:0] rs1_cur = rs1_history[counter_cur];
+    wire [31:0] rs2_cur = rs2_history[counter_cur];
+    wire [31:0] rd_cur = regs[rd_history[counter_cur]];
+    wire [2:0] f3_cur = f3_history[counter_cur];
+    wire [6:0] f7_cur = f7_history[counter_cur];
+    wire [6:0] op_cur = op_history[counter_cur];
+    wire [11:0] imm_cur = imm_history[counter_cur];
+
+
+    /* Correction signals */
+    wire r_correct =    f3_cur == 3'b000 ? rs1_cur + rs2_cur == rd_cur    :
+                        f3_cur == 3'b001 ? (rs1_cur << rs2_cur[4:0]) == rd_cur :
+                        f3_cur == 3'b010 ? rd_cur == ($signed(rs1_cur) < $signed(rs2_cur)) :
+                        f3_cur == 3'b011 ? rd_cur == (rs1_cur < rs2_cur) :
+                        f3_cur == 3'b100 ? rd_cur == (rs1_cur ^ rs2_cur) :
+                        f3_cur == 3'b101 ? rd_cur == (rs1_cur >> rs2_cur[4:0]) :
+                        f3_cur == 3'b110 ? rd_cur == (rs1_cur | rs2_cur) :
+                        f3_cur == 3'b111 ? rd_cur == (rs1_cur & rs2_cur) :
+                        0;
+
+    wire i_correct =    f3_cur == 3'b000 ? rd_cur == (rs1_cur + {{20{imm_cur[11]}}, imm_cur}) :
+                        f3_cur == 3'b001 ? rd_cur == (rs1_cur << imm_cur[6:0]) :
+                        f3_cur == 3'b010 ? rd_cur == ($signed(rs1_cur) < $signed({{20{imm_cur[11]}}, imm_cur})) :
+                        f3_cur == 3'b011 ? rd_cur == (rs1_cur < {20'b0, imm_cur}) :
+                        f3_cur == 3'b100 ? rd_cur == (rs1_cur ^ {{20{imm_cur[11]}}, imm_cur}) :
+                        f3_cur == 3'b101 ? rd_cur == (rs1_cur >> imm_cur[6:0]) :    // wrong
+                        f3_cur == 3'b110 ? rd_cur == (rs1_cur | {{20{imm_cur[11]}}, imm_cur}) :
+                        f3_cur == 3'b111 ? rd_cur == (rs1_cur & {{20{imm_cur[11]}}, imm_cur}) :
+                        0;
+
+    wire correct =  op_mode == `R_TYPE ? r_correct :
+                    op_mode == `I_TYPE ? i_correct :
+                    0;
+                    
+                        
     integer i;
     initial begin
-        $display("RLEN: %d", `RLEN);
+
+        /* Intial instruction field selection */
         rd <= $urandom % `RLEN;
         rs1 <= $urandom % `RLEN;
         rs2 <= $urandom % `RLEN;
+        funct3 <= $urandom % 7;
+        imm <= $urandom;
 
-        for (i = 0; i < 3; i += 1) begin
+        /* OPCODE constant initialization */
+        OPCODES[0] <= 7'b011_0011; // R format
+        OPCODES[1] <= 7'b001_0011; // I format
+        OPCODES[2] <= 7'b010_0011; // S format
+
+        for (i = 0; i < 2; i += 1) begin
             rs1_history[i] = 32'b0;
             rs2_history[i] = 32'b0;
             rd_history[i] = 5'b0;
+            op_history[i] = 7'b0;
+            imm_history[i] = 12'b0;
+            f3_history[i] = 3'b0;
         end
     end
 
-    // random adds begin coming in when the counter >= 10
-    assign IDATA = (RES == 0) ? {funct7, rs2, rs1, funct3, rd, opcode} : 32'h00000013;
-
-    // registers
-    wire [31:0] regs [0:15] /*synthesis keep*/;
-    `UNPACK_ARRAY(32, 16, regs, regfile);
+    assign IDATA = (RES == 0) ? (
+        op_mode == `R_TYPE ? {funct7, rs2, rs1, funct3, rd, opcode} :
+        op_mode == `I_TYPE ? {imm, rs1, funct3, rd, opcode}         :
+        32'h00000013) : 32'h00000013;
 
     darksocv soc0
     (
@@ -122,32 +179,49 @@ module formal;
         .regfile_out(regfile)
     );
 
-    /* test driver code */
+    /* Assertions */
     always @(posedge CLK) begin
-        if (RES == 0) begin
-            rd <= (counter % `RLEN);
-            rs1 <= (counter + 1) % `RLEN;
-            rs2 <= (counter + 2) % `RLEN;
+        if (counter >= 5
+            && (rd_cur != 0)
+            && (!correct))  begin
+            $display("INCORRECT:");
+            $display("F3: %x, COUNTER: %d", f3_cur, counter);
+            $display("(%x, %x) = %x", rs1_cur, imm_cur, rd_cur);
 
-            // Instructions exhibit architectural effects after
-            // counter >= 3
-            if (counter >= 3) begin
-                rs2_history[counter % 2] <= regs[rs2];
-                rs1_history[counter % 2] <= regs[rs1];
-                rd_history[counter % 2] <= rd;
-            end
-
-            if (counter >= 5) begin
-                if (rd_history[counter % 2] != 0) begin
-                    // TODO assertions go here
-                    $display("%d + %d = %d, c=%d", rs1_history[counter % 2], 
-                        rs2_history[counter % 2],
-                        regs[rd_history[counter % 2]], counter[12:0]);
-                end
-            end
-
-            counter <= counter + 1;
+            $display(imm[5] != 0);
         end
     end
 
+    /* Update these values after every cycle */
+    always @(posedge CLK) begin
+        counter <= counter + 1;
+        //op_mode <= $urandom % 1; // Test R-Format and I-Format
+        op_mode <= `I_TYPE;
+
+        rd <= (counter % `RLEN);
+        rs1 <= (counter + 1) % `RLEN;
+        rs2 <= (counter + 2) % `RLEN;
+        funct3 <= ($urandom % 7);
+
+        // only lower 5 bits so we don't mess with the funct7
+        imm <= $urandom & (5'b11111); // make sure that shifts can work 
+
+        if (counter >= 3) begin
+            rs2_history[counter_cur] <= regs[rs2];
+            rs1_history[counter_cur] <= regs[rs1];
+            rd_history[counter_cur] <= rd;
+            f3_history[counter_cur] <= funct3;
+            imm_history[counter_cur] <= imm;
+
+            // do not use opcodes for this because it's a wire and results show up imm.
+            op_history[counter_cur] <= OPCODES[op_mode];
+        end
+
+    end
+
+    /* -------- DEBUGGING */
+
+    // registers
+    wire [31:0] regs [0:15] /*synthesis keep*/;
+    `UNPACK_ARRAY(32, 16, regs, regfile);
 endmodule
