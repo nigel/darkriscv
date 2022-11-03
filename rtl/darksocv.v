@@ -473,7 +473,6 @@ module darksocv
     end
     
     assign DATAI = DADDR[31] ? IOMUX[DADDR[4:2]==3'b100 ? 3'b100 : DADDR[3:2]] : DCACHED;
-
 `else
 
     // no cache!
@@ -714,7 +713,6 @@ module darksocv
     wire [3:0] UDEBUG;
 
     wire FINISH_REQ;
-    /*
 
     darkuart
 //    #( 
@@ -737,7 +735,6 @@ module darksocv
 `endif            
       .DEBUG(UDEBUG)
     );
-    */
 
     // darkriscv
 

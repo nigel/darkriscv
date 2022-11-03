@@ -40,7 +40,7 @@
 `define LCC     7'b00000_11      // lxx   rd,rs1,imm[11:0]
 `define SCC     7'b01000_11      // sxx   rs1,rs2,imm[11:0]
 `define MCC     7'b00100_11      // xxxi  rd,rs1,imm[11:0]
-`define RCC     7'b01100_11      // xxx   rd,rs1,rs2 
+`define RCC     7'b01100_11      // xxx   rd,rs1,rs2 (R type instruction)
 `define CCC     7'b11100_11      // exx, csrxx, mret
 
 // proprietary extension (custom-0)

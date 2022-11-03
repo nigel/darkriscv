@@ -35,10 +35,15 @@
 `define R_TYPE 0
 `define I_TYPE 1
 `define S_TYPE 2
+`define L_TYPE 3 // I-type instruction but we're modeling loads
+
+`define RAM_SIZE 8192
 
 module formal;
 
     reg CLK = 0;
+
+    reg [31:0] RAM [`RAM_SIZE - 1:0];
 
     reg RES = 1;
     /* Setup code */
@@ -57,7 +62,7 @@ module formal;
  `endif
         $display("Hello World!");
         #1     RES = 0;            // wait 1us in reset state
-        #10e3 RES = 1;            // run  1ms
+        #1000 RES = 1;            // run  1ms
         $finish();
     end
 
@@ -66,21 +71,19 @@ module formal;
     wire [31:0] IDATA;
     wire [`REG_TOTAL - 1 : 0] regfile /*synthesis keep*/;
 
-
     wire [31 : 0] pc;
 
     // uart signals
     wire TX;
     wire RX = 1;
 
-    reg [6:0] OPCODES [2:0];
-
+    // opcode definitions
+    reg [6:0] OPCODES [3:0];
 
     /* Determines the type of instruction we're currently testing */
     reg [1:0] op_mode = `R_TYPE;
 
     // (R-Type) instruction
-    // TODO implement support for Funct7
     wire [6:0] opcode = OPCODES[op_mode];
     reg [2:0] funct3 = 3'b001;
     reg [6:0] funct7 = 7'b0000000;
@@ -108,6 +111,7 @@ module formal;
     wire [6:0] f7_cur = f7_history[counter_cur];
     wire [6:0] op_cur = op_history[counter_cur];
     wire [11:0] imm_cur = imm_history[counter_cur];
+    wire [31:0] imm_cur_signed = $signed({{20 {imm_history[counter_cur][11]}}, imm_history[counter_cur]});
 
 
     /* Correction signals */
@@ -126,19 +130,28 @@ module formal;
                         f3_cur == 3'b010 ? rd_cur == ($signed(rs1_cur) < $signed({{20{imm_cur[11]}}, imm_cur})) :
                         f3_cur == 3'b011 ? rd_cur == (rs1_cur < {20'b0, imm_cur}) :
                         f3_cur == 3'b100 ? rd_cur == (rs1_cur ^ {{20{imm_cur[11]}}, imm_cur}) :
-                        f3_cur == 3'b101 ? rd_cur == (rs1_cur >> imm_cur[6:0]) :    // wrong
+                        f3_cur == 3'b101 ? rd_cur == (rs1_cur >> imm_cur[6:0]) :
                         f3_cur == 3'b110 ? rd_cur == (rs1_cur | {{20{imm_cur[11]}}, imm_cur}) :
                         f3_cur == 3'b111 ? rd_cur == (rs1_cur & {{20{imm_cur[11]}}, imm_cur}) :
+                        0;
+                    
+    wire l_correct =    f3_cur == 3'b000 ? rd_cur == {{24 {RAM[(rs1_cur + imm_cur_signed)][7]}}, RAM[(rs1_cur + imm_cur_signed)][7:0]} : // lb
+                        f3_cur == 3'b001 ? rd_cur == {{16 {RAM[(rs1_cur + imm_cur_signed)][15]}}, RAM[(rs1_cur + imm_cur_signed)][15:0]} : // lh
+                        f3_cur == 3'b010 ? rd_cur == RAM[rs1_cur + imm_cur_signed] : // lw
+                        f3_cur == 3'b011 ? rd_cur == RAM[(rs1_cur + imm_cur_signed)] :// ld
+                        f3_cur == 3'b100 ? rd_cur == {24'b0, RAM[(rs1_cur + imm_cur_signed)][7:0]} : // lbu
+                        f3_cur == 3'b101 ? rd_cur == {16'b0, RAM[(rs1_cur + imm_cur_signed)][15:0]} : // lhu
+                        f3_cur == 3'b110 ? rd_cur == RAM[(rs1_cur + imm_cur_signed)] : // lwu
                         0;
 
     wire correct =  op_mode == `R_TYPE ? r_correct :
                     op_mode == `I_TYPE ? i_correct :
+                    op_mode == `S_TYPE ? 1 : // no architectural effects when we do stores
+                    op_mode == `L_TYPE ? l_correct :
                     0;
-                    
-                        
+
     integer i;
     initial begin
-
         /* Intial instruction field selection */
         rd <= $urandom % `RLEN;
         rs1 <= $urandom % `RLEN;
@@ -150,6 +163,7 @@ module formal;
         OPCODES[0] <= 7'b011_0011; // R format
         OPCODES[1] <= 7'b001_0011; // I format
         OPCODES[2] <= 7'b010_0011; // S format
+        OPCODES[3] <= 7'b000_0011; // L format
 
         for (i = 0; i < 2; i += 1) begin
             rs1_history[i] = 32'b0;
@@ -159,11 +173,19 @@ module formal;
             imm_history[i] = 12'b0;
             f3_history[i] = 3'b0;
         end
+
+        // initialize our "shadow" ram with all 0's.
+        for (i = 0; i < `RAM_SIZE; i += 1) begin
+            RAM[i] = 32'b0;
+        end
     end
 
     assign IDATA = (RES == 0) ? (
         op_mode == `R_TYPE ? {funct7, rs2, rs1, funct3, rd, opcode} :
         op_mode == `I_TYPE ? {imm, rs1, funct3, rd, opcode}         :
+        op_mode == `L_TYPE ? {imm, rs1, funct3, rd, opcode}         :
+        op_mode == `S_TYPE ? {funct7, rs2, rs1, funct3, rd, opcode} :
+        // funct7: imm[11:5], rd: imm[4:0]
         32'h00000013) : 32'h00000013;
 
     darksocv soc0
@@ -186,25 +208,35 @@ module formal;
             && (!correct))  begin
             $display("INCORRECT:");
             $display("F3: %x, COUNTER: %d", f3_cur, counter);
-            $display("(%x, %x) = %x", rs1_cur, imm_cur, rd_cur);
-
+            $display("(%x, %x) = %x", rs1_cur, imm_cur, regs[rd_cur]);
+            $display("expected: %x", RAM[rs1_cur]);
             $display(imm[5] != 0);
         end
+
     end
 
     /* Update these values after every cycle */
     always @(posedge CLK) begin
         counter <= counter + 1;
-        //op_mode <= $urandom % 1; // Test R-Format and I-Format
-        op_mode <= `I_TYPE;
 
-        rd <= (counter % `RLEN);
+        if (counter == 11) begin
+            op_mode <= `L_TYPE;
+            rd <= (counter + 3 % `RLEN);
+        end else begin
+            op_mode <= `S_TYPE;
+            rd <= 0;
+        end
+
+        op_mode <= `L_TYPE;
+        rd <= (counter + 3) % `RLEN;
+
         rs1 <= (counter + 1) % `RLEN;
         rs2 <= (counter + 2) % `RLEN;
-        funct3 <= ($urandom % 7);
+        funct3 <= (op_mode == `S_TYPE) ? 3'b010 : 3'b010;
+        funct7 <= 7'b0;
 
         // only lower 5 bits so we don't mess with the funct7
-        imm <= $urandom & (5'b11111); // make sure that shifts can work 
+        imm <= ((op_mode == `I_TYPE) || (op_mode == `R_TYPE)) ? $urandom & (5'b1) : 0; // make sure that shifts can work 
 
         if (counter >= 3) begin
             rs2_history[counter_cur] <= regs[rs2];
@@ -213,15 +245,35 @@ module formal;
             f3_history[counter_cur] <= funct3;
             imm_history[counter_cur] <= imm;
 
-            // do not use opcodes for this because it's a wire and results show up imm.
+            // do not use `opcodes` for this because it's a wire and results show up imm.
             op_history[counter_cur] <= OPCODES[op_mode];
-        end
 
+            if (op_mode == `S_TYPE) begin
+                case (funct3)
+                    // TODO fix these incorrect values
+                    3'b000: begin // sb
+                        RAM[(regs[rs1] + $signed({rd, funct7}))][7:0] <= regs[rs2][7:0];
+                    end
+
+                    3'b001: begin // sh
+                        RAM[(regs[rs1] + $signed({rd, funct7}))][15:0] <= regs[rs2][15:0];
+                    end
+
+                    3'b010: begin // sw
+                        RAM[(regs[rs1] + $signed({rd, funct7}))][31:0] <= regs[rs2];
+                    end
+
+                    3'b011: begin // sd
+                        RAM[(regs[rs1] + $signed({rd, funct7}))][31:0] <= regs[rs2];
+                    end
+                endcase
+            end
+        end
     end
 
     /* -------- DEBUGGING */
-
     // registers
     wire [31:0] regs [0:15] /*synthesis keep*/;
     `UNPACK_ARRAY(32, 16, regs, regfile);
+
 endmodule
