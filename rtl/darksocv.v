@@ -47,6 +47,8 @@ module darksocv
     output [3:0] LED,       // on-board leds
     output [3:0] DEBUG,     // osciloscope
 
+    output       HLT_o,       // will tell you if something is being halted
+
     // interface for looking at PC
    output [31:0] pc_out,
    output [`REG_TOTAL - 1:0] regfile_out
@@ -54,7 +56,7 @@ module darksocv
 
     // internal/external reset logic
 
-    reg [7:0] IRES = -1;
+    reg [7:0] IRES = 1;
 
 `ifdef INVRES
     always@(posedge XCLK) IRES <= XRES==0 ? -1 : IRES[7] ? IRES-1 : 0; // reset low
@@ -287,6 +289,7 @@ module darksocv
     reg  [15:0] LEDFF  = 0;
     
     wire HLT;
+    assign HLT_o = HLT;
     
 `ifdef __ICACHE__
 
@@ -392,6 +395,8 @@ module darksocv
 //    assign IDATA = ROMFF;
 
 `endif
+
+
 
 `ifdef __DCACHE__
 
@@ -514,7 +519,7 @@ module darksocv
     reg [31:0] RAMFF;
 `ifdef __WAITSTATES__
     
-    reg [1:0] DACK = 0;
+    reg [1:0] DACK;
     
     wire WHIT = 1;
     wire DHIT = !((WR||RD) && DACK!=1);
@@ -554,7 +559,7 @@ module darksocv
     wire DHIT = 1;
 
 `endif
-    
+
     always@(posedge CLK) // stage #1.5
     begin
 `ifdef __HARVARD__
@@ -601,10 +606,15 @@ module darksocv
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[1]) RAM[DADDR[`MLEN-1:2]][1 * 8 + 7: 1 * 8] <= DATAO[1 * 8 + 7: 1 * 8];
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[0]) RAM[DADDR[`MLEN-1:2]][0 * 8 + 7: 0 * 8] <= DATAO[0 * 8 + 7: 0 * 8];
     `else
+
+
+
+
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[3]) MEM[DADDR[`MLEN-1:2]][3 * 8 + 7: 3 * 8] <= DATAO[3 * 8 + 7: 3 * 8];
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[2]) MEM[DADDR[`MLEN-1:2]][2 * 8 + 7: 2 * 8] <= DATAO[2 * 8 + 7: 2 * 8];
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[1]) MEM[DADDR[`MLEN-1:2]][1 * 8 + 7: 1 * 8] <= DATAO[1 * 8 + 7: 1 * 8];
         if(!HLT&&WR&&DADDR[31]==0&&/*DADDR[`MLEN-1]==1&&*/BE[0]) MEM[DADDR[`MLEN-1:2]][0 * 8 + 7: 0 * 8] <= DATAO[0 * 8 + 7: 0 * 8];
+
     `endif
 `endif
 
