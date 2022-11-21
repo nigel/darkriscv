@@ -37,6 +37,11 @@
 `define S_TYPE 2
 `define L_TYPE 3 // I-type instruction but we're modeling loads
 
+`define SB 0;
+`define SH 1;
+`define SW 2;
+`define SD 3;
+
 `define RAM_SIZE 2**`MLEN/4-1
 
 module formal;
@@ -136,8 +141,20 @@ module formal;
                         f3_cur == 3'b111 ? rd_cur == (rs1_cur & {{20{imm_cur[11]}}, imm_cur}) :
                         0;
                     
-    wire l_correct =    f3_cur == 3'b000 ? rd_cur == {{24 {RAM[(rs1_cur + imm_cur_signed)][7]}}, RAM[(rs1_cur + imm_cur_signed)][7:0]} : // lb
-                        f3_cur == 3'b001 ? rd_cur == {{16 {RAM[(rs1_cur + imm_cur_signed)][15]}}, RAM[(rs1_cur + imm_cur_signed)][15:0]} : // lh
+    wire l_correct =    f3_cur == 3'b000 ? rd_cur == ((((rs1_cur + imm_cur_signed) % 4) == 0) ?
+                                    {{24 {RAM[(rs1_cur + imm_cur_signed)][7]}}, RAM[(rs1_cur + imm_cur_signed) / 4][7:0]} : // lb
+                                    (((rs1_cur + imm_cur_signed) % 4) == 1) ?
+                                    {{24 {RAM[(rs1_cur + imm_cur_signed)][15]}}, RAM[(rs1_cur + imm_cur_signed) / 4][15:8]} : // lb
+                                    (((rs1_cur + imm_cur_signed) % 4) == 2) ?
+                                    {{24 {RAM[(rs1_cur + imm_cur_signed)][23]}}, RAM[(rs1_cur + imm_cur_signed) / 4][23:16]} : // lb
+                                    {{24 {RAM[(rs1_cur + imm_cur_signed)][31]}}, RAM[(rs1_cur + imm_cur_signed) / 4][31:24]} // lb
+                                ) :
+
+                        f3_cur == 3'b001 ? rd_cur == ((((rs1_cur + imm_cur_signed) % 4) < 2) ?
+                                    {{16 {RAM[(rs1_cur + imm_cur_signed)][15]}}, RAM[(rs1_cur + imm_cur_signed) / 4][15:0]} : // lh
+                                    {{16 {RAM[(rs1_cur + imm_cur_signed)][31]}}, RAM[(rs1_cur + imm_cur_signed) / 4][31:16]} // lh
+                                ) :
+
                         f3_cur == 3'b010 ? rd_cur == RAM[(rs1_cur + imm_cur_signed) / 4] : // lw
                         f3_cur == 3'b011 ? rd_cur == RAM[(rs1_cur + imm_cur_signed)] :// ld
                         f3_cur == 3'b100 ? rd_cur == {24'b0, RAM[(rs1_cur + imm_cur_signed)][7:0]} : // lbu
@@ -214,13 +231,23 @@ module formal;
                 && (!correct))  begin
                 $display("\n\nINCORRECT %d", counter);
                 $display("recieve [%x] = %x",(rs1_cur + $signed(imm_cur)), rd_cur);
+
                 $display("local RAM[%x] = %x", (rs1_cur + $signed(imm_cur)), RAM[(rs1_cur +$signed(imm_cur)) / 4]);
                 $display("core RAM[%x] = %x", (rs1_cur + $signed(imm_cur)), (soc0.MEM[(rs1_cur + $signed(imm_cur))/ 4]));
                 $display("expected: %x", RAM[(rs1_cur + imm_cur_signed) / 4]);
+
+                $display("LOCAL");
+                $display("RAM[0]: %x", RAM[0]);
+                $display("RAM[1]: %x", RAM[1]);
+                $display("RAM[2]: %x", RAM[2]);
+                $display("RAM[3]: %x", RAM[3]);
+
+
                 $display("MEM[0]: %x", soc0.MEM[0]);
                 $display("MEM[1]: %x", soc0.MEM[1]);
                 $display("MEM[2]: %x", soc0.MEM[2]);
                 $display("MEM[3]: %x", soc0.MEM[3]);
+
             end
         end
     end
@@ -231,66 +258,84 @@ module formal;
             
             counter <= counter + 1;
 
-            if (counter >= 50) begin
+            /* Opmode selection */
+            if (counter >= 20) begin
                 // TODO only test sw, lw
                 op_mode <= `L_TYPE;
-                rs1 <= (counter * 4) + 4 % `RLEN; // register that stores the address
+                rs1 <= (counter) + 4 % `RLEN; // register that stores the address
                 rs2 <= 0;                     // offset
                 rd <= (counter + 1) % `RLEN;  // destination
                 imm <= 0; // TODO
-                funct3 <= 3'b010; // TODO
+                funct3 <= $urandom % 3;
                 funct7 <= 7'b0;
             end else begin
                 op_mode <= `S_TYPE;
                 rd <= 0; // offset
                 funct7 <= 7'b0;
-                funct3 <= 3'b010; // TODO
-                rs1 <= (counter * 4) % `RLEN; // address of where to store
+                funct3 <= $urandom % 3;
+                rs1 <= (counter) % `RLEN; // address of where to store
                 rs2 <= (counter + 2) % `RLEN;
             end
 
+            /* History buffer */
             // only lower 5 bits so we don't mess with the funct7
             // imm <= ((op_mode == `I_TYPE) || (op_mode == `R_TYPE)) ? $urandom & (5'b1) : 0; // make sure that shifts can work 
-
             if (counter >= 3) begin
                 rs2_history[counter_cur] <= regs[rs2];
                 rs1_history[counter_cur] <= regs[rs1];
                 rd_history[counter_cur] <= rd;
                 f3_history[counter_cur] <= funct3;
                 imm_history[counter_cur] <= imm;
-
                 // do not use `opcodes` for this because it's a wire and results show up imm.
                 op_history[counter_cur] <= op_mode;
             end
+        end
+    end
 
-                if (op_mode == `S_TYPE) begin
-                    case (funct3)
-                        // TODO fix these incorrect values
-                        3'b000: begin // sb
-                            RAM[(regs[rs1] + $signed({rd, funct7}))][7:0] <= regs[rs2][7:0];
-                        end
-
-                        3'b001: begin // sh
-                            RAM[(regs[rs1] + $signed({rd, funct7}))][15:0] <= regs[rs2][15:0];
-                        end
-
-                        3'b010: begin // sw
-                            $display("Counter : %d. Storing %d to %x", counter, regs[rs2], regs[rs1] + $signed({rd, funct7}));
-                            $display("Local: RAM[%x] = %d", regs[rs1] + $signed({rd, funct7}), regs[rs2]);
-                            RAM[(regs[rs1] + $signed({rd, funct7})) / 4] <= regs[rs2];
-                        end
-
-                        3'b011: begin // sd
-                            RAM[(regs[rs1] + $signed({rd, funct7}))][31:0] <= regs[rs2];
-                        end
-                    endcase
+    // shadow RAM heuristics
+    always @(posedge CLK) begin
+        if (!HLT && (op_mode == `S_TYPE)) begin
+            case (funct3)
+                3'b000: begin // sb
+                    if (((regs[rs1] + $signed({rd, funct7})) % 4) == 0) begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][7:0] <= regs[rs2][7:0];
+                    end else if (((regs[rs1] + $signed({rd, funct7})) % 4) == 1) begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][15:8] <= regs[rs2][7:0];
+                    end else if (((regs[rs1] + $signed({rd, funct7})) % 4) == 2) begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][23:16] <= regs[rs2][7:0];
+                    end else begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][31:24] <= regs[rs2][7:0];
+                    end
                 end
 
-            end
+                3'b001: begin // sh
+                    if (((regs[rs1] + $signed({rd, funct7})) % 4) < 2) begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][15:0] <= regs[rs2][15:0];
+                        $display("(shadow): ram[%x] = %x",
+                            ((regs[rs1] + $signed({rd, funct7}))),
+                            regs[rs2][15:0]);
+                    end else begin
+                        RAM[(regs[rs1] + $signed({rd, funct7})) / 4][31:16] <= regs[rs2][15:0];
+                        $display("(shadow): ram[%x] = %x",
+                            ((regs[rs1] + $signed({rd, funct7}))),
+                            regs[rs2][15:0]);
+                    end
+                end
+
+                3'b010: begin // sw
+                    RAM[(regs[rs1] + $signed({rd, funct7})) / 4] <= regs[rs2];
+                end
+
+                3'b011: begin // sd
+                    RAM[(regs[rs1] + $signed({rd, funct7})) / 4][31:0] <= regs[rs2];
+                end
+            endcase
+        end
     end
 
     /* -------- DEBUGGING */
     // registers
     wire [31:0] regs [0:15] /*synthesis keep*/;
     `UNPACK_ARRAY(32, 16, regs, regfile);
+
 endmodule
