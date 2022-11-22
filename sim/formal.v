@@ -68,7 +68,7 @@ module formal;
  `endif
         $display("Hello World!");
         #1     RES = 0;            // wait 1us in reset state
-        #1000 RES = 1;            // run  1ms
+        #2000 RES = 1;            // run  1ms
         $finish();
     end
 
@@ -132,7 +132,7 @@ module formal;
                         0;
 
     wire i_correct =    f3_cur == 3'b000 ? rd_cur == (rs1_cur + {{20{imm_cur[11]}}, imm_cur}) :
-                        f3_cur == 3'b001 ? rd_cur == (rs1_cur << imm_cur[6:0]) :
+                        f3_cur == 3'b001 ? rd_cur == (rs1_cur << imm_cur[6:0] % 32) : // rotation is done
                         f3_cur == 3'b010 ? rd_cur == ($signed(rs1_cur) < $signed({{20{imm_cur[11]}}, imm_cur})) :
                         f3_cur == 3'b011 ? rd_cur == (rs1_cur < {20'b0, imm_cur}) :
                         f3_cur == 3'b100 ? rd_cur == (rs1_cur ^ {{20{imm_cur[11]}}, imm_cur}) :
@@ -224,7 +224,6 @@ module formal;
 
     /* Assertions */
     always @(posedge CLK) begin
-
         if (!HLT) begin
             if (counter >= 5
                 && (rd_cur != 0)
@@ -232,63 +231,46 @@ module formal;
                 $display("\n\nINCORRECT %d", counter);
                 $display("recieve [%x] = %x",(rs1_cur + $signed(imm_cur)), rd_cur);
 
-                $display("local RAM[%x] = %x", (rs1_cur + $signed(imm_cur)), RAM[(rs1_cur +$signed(imm_cur)) / 4]);
-                $display("core RAM[%x] = %x", (rs1_cur + $signed(imm_cur)), (soc0.MEM[(rs1_cur + $signed(imm_cur))/ 4]));
-                $display("expected: %x", RAM[(rs1_cur + imm_cur_signed) / 4]);
-
-                $display("LOCAL");
-                $display("RAM[0]: %x", RAM[0]);
-                $display("RAM[1]: %x", RAM[1]);
-                $display("RAM[2]: %x", RAM[2]);
-                $display("RAM[3]: %x", RAM[3]);
-
-
-                $display("MEM[0]: %x", soc0.MEM[0]);
-                $display("MEM[1]: %x", soc0.MEM[1]);
-                $display("MEM[2]: %x", soc0.MEM[2]);
-                $display("MEM[3]: %x", soc0.MEM[3]);
-
+                $display("\n");
             end
         end
     end
 
-    /* Update these values after every cycle */
+    /* Instruction generation */
     always @(posedge CLK) begin
         if (!HLT) begin // ensure that the core isn't waiting for peripherals 
-            
             counter <= counter + 1;
-
             /* Opmode selection */
             if (counter >= 20) begin
-                // TODO only test sw, lw
-                op_mode <= `L_TYPE;
-                rs1 <= (counter) + 4 % `RLEN; // register that stores the address
-                rs2 <= 0;                     // offset
-                rd <= (counter + 1) % `RLEN;  // destination
-                imm <= 0; // TODO
+                op_mode <= $urandom % 4;
+                rs1 <= (counter + 4) % `RLEN; // register that stores the address
+                rs2 <= (counter + 2) % `RLEN;
+                imm <= $urandom;
+                rd <= (counter + 1) % `RLEN;
                 funct3 <= $urandom % 3;
                 funct7 <= 7'b0;
             end else begin
+                // First 20 cycles, we want to fill up the register file.
                 op_mode <= `S_TYPE;
-                rd <= 0; // offset
-                funct7 <= 7'b0;
+                rd <= $urandom;
+                funct7 <= $urandom;
                 funct3 <= $urandom % 3;
                 rs1 <= (counter) % `RLEN; // address of where to store
                 rs2 <= (counter + 2) % `RLEN;
             end
+        end
+    end
 
-            /* History buffer */
-            // only lower 5 bits so we don't mess with the funct7
-            // imm <= ((op_mode == `I_TYPE) || (op_mode == `R_TYPE)) ? $urandom & (5'b1) : 0; // make sure that shifts can work 
-            if (counter >= 3) begin
-                rs2_history[counter_cur] <= regs[rs2];
-                rs1_history[counter_cur] <= regs[rs1];
-                rd_history[counter_cur] <= rd;
-                f3_history[counter_cur] <= funct3;
-                imm_history[counter_cur] <= imm;
-                // do not use `opcodes` for this because it's a wire and results show up imm.
-                op_history[counter_cur] <= op_mode;
-            end
+    /* History buffer population */
+    always @(posedge CLK) begin
+        if (!HLT && (counter >= 3)) begin
+            rs2_history[counter_cur] <= regs[rs2];
+            rs1_history[counter_cur] <= regs[rs1];
+            rd_history[counter_cur] <= rd;
+            f3_history[counter_cur] <= funct3;
+            imm_history[counter_cur] <= imm;
+
+            op_history[counter_cur] <= op_mode;
         end
     end
 
@@ -311,14 +293,8 @@ module formal;
                 3'b001: begin // sh
                     if (((regs[rs1] + $signed({rd, funct7})) % 4) < 2) begin
                         RAM[(regs[rs1] + $signed({rd, funct7})) / 4][15:0] <= regs[rs2][15:0];
-                        $display("(shadow): ram[%x] = %x",
-                            ((regs[rs1] + $signed({rd, funct7}))),
-                            regs[rs2][15:0]);
                     end else begin
                         RAM[(regs[rs1] + $signed({rd, funct7})) / 4][31:16] <= regs[rs2][15:0];
-                        $display("(shadow): ram[%x] = %x",
-                            ((regs[rs1] + $signed({rd, funct7}))),
-                            regs[rs2][15:0]);
                     end
                 end
 
